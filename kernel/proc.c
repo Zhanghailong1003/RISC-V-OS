@@ -21,6 +21,11 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
+void freeprockvm(struct proc* p);
+pagetable_t ukvminit();
+
+void ukvmmap(pagetable_t kpagetable, uint64 va, uint64 pa, uint64 sz, int perm);
+
 // initialize the proc table at boot time.
 void
 procinit(void)
@@ -120,9 +125,24 @@ found:
     release(&p->lock);
     return 0;
   }
+  
+  // 为每个进程分配并初始化一个新的专属内核页
+  p->kpagetable = ukvminit();
+  if(p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
+  uint64 va = KSTACK((int)(p - proc));
+  pte_t pa = kvmpa(va);
+  memset((void *)pa, 0, PGSIZE);
+  ukvmmap(p->kpagetable, va, (uint64)pa, PGSIZE, PTE_R|PTE_W);
+  p->kstack = va;
+
+
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
@@ -150,6 +170,13 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  if(p->kpagetable){
+    freeprockvm(p);
+    p->kpagetable = 0;
+  }
+  if(p->kstack){
+    p->kstack = 0;
+  }
 }
 
 // Create a user page table for a given process,
@@ -473,10 +500,15 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        // 切换到新进程的内核页表
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
+        // 切换回全局内核页表
+        kvminithart();
         c->proc = 0;
 
         found = 1;
