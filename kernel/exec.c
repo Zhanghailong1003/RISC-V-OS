@@ -9,6 +9,7 @@
 
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
 void vmprint(pagetable_t pagetable, uint64 deptrh);
+int pagecopy(pagetable_t oldpage, pagetable_t newpage, uint64 begin, uint64 end);
 int
 exec(char *path, char **argv)
 {
@@ -115,6 +116,12 @@ exec(char *path, char **argv)
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+
+  if(pagecopy(p->pagetable, p->kpagetable, 0, p->sz) != 0){
+    goto bad;
+  }
+  w_satp(MAKE_SATP(p->kpagetable));
+  sfence_vma();
 
   if(p->pid==1) vmprint(p->pagetable, 0);
 

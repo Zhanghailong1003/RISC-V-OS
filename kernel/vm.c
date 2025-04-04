@@ -19,7 +19,7 @@ extern char trampoline[]; // trampoline.S
 
 
 /*
- * create a direct-map page table for the kernel.
+ * create a direct-mappage table for the kernel.
  */
 void
 kvminit()
@@ -560,4 +560,50 @@ void freeprockvm(struct proc* p) {
   ukvmunmap(kpagetable, VIRTIO0, PGSIZE/PGSIZE);
   ukvmunmap(kpagetable, UART0, PGSIZE/PGSIZE);
   ufreewalk(kpagetable);
+}
+
+int
+umappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
+{
+  uint64 a, last;
+  pte_t *pte;
+
+  a = PGROUNDDOWN(va);
+  last = PGROUNDDOWN(va + size - 1);
+  for(;;){
+    if((pte = walk(pagetable, a, 1)) == 0)
+      return -1;
+    *pte = PA2PTE(pa) | perm | PTE_V;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
+
+// 将从begin到end的虚拟地址的映射, 从oldpage复制到newpage
+int
+pagecopy(pagetable_t oldpage, pagetable_t newpage, uint64 begin, uint64 end) {
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  begin = PGROUNDUP(begin);
+
+  for (i = begin; i < end; i += PGSIZE) {
+    if ((pte = walk(oldpage, i, 0)) == 0)
+      panic("pagecopy walk oldpage nullptr");
+    if ((*pte & PTE_V) == 0)
+      panic("pagecopy oldpage pte not valid");
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte) & (~PTE_U); // 把U flag抹去
+    if (umappages(newpage, i, PGSIZE, pa, flags) != 0) {
+      goto err;
+    }
+  }
+  return 0;
+
+err:
+  uvmunmap(newpage, 0, i / PGSIZE, 1);
+  return -1;
 }
