@@ -122,7 +122,7 @@ void restore()
   p->trapframe->t0 = p->tick_t0;
   p->trapframe->t1 = p->tick_t1;
   p->trapframe->t2 = p->tick_t2;
-  p->trapframe->s0 =  p->tick_s0;
+  p->trapframe->s0 = p->tick_s0;
   p->trapframe->s1 = p->tick_s1;
   p->trapframe->a0 = p->tick_a0;
   p->trapframe->a1 = p->tick_a1;
