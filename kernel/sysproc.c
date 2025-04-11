@@ -47,8 +47,18 @@ sys_sbrk(void)
   if(argint(0, &n) < 0)
     return -1;
   addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+  // if(growproc(n) < 0)
+  //   return -1;
+  
+  if(n > 0){
+    myproc()->sz += n;
+  }else{    // 处理sbrk()参数为负的情况
+    if(myproc()->sz + n < 0){
+      return -1;
+    }else{
+      myproc()->sz = uvmdealloc(myproc()->pagetable, myproc()->sz, myproc()->sz + n);
+    }
+  }
   return addr;
 }
 

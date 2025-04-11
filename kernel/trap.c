@@ -67,6 +67,17 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 13 || r_scause() == 15){
+    uint64 va = r_stval();
+    if(is_lazy_alloc_va(va)){
+      if(lazy_alloc(va) < 0){           // 正确处理内存不足：如果在页面错误处理程序中执行kalloc()失败，则终止当前进程
+        printf("lazy_alloc fail!\n");
+        p->killed = 1;
+      }
+    }else{  // 若程序访问的地址高于 sbrk 分配的堆顶，立即终止
+      printf("用户正在试图访问一个非法的虚拟地址\n");
+      p->killed = 1;
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
