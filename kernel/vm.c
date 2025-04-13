@@ -159,6 +159,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if(*pte & PTE_V)
       panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
+
     if(a == last)
       break;
     a += PGSIZE;
@@ -311,7 +312,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,14 +319,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    *pte = *pte & ~(PTE_W);       // 清除写权限
+    *pte = *pte | PTE_COW;        // 声明一个cow page
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    incr((void *)pa);
   }
   return 0;
 
@@ -358,6 +357,11 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if(is_cow_fault(pagetable, va0)){
+      if(cow_alloc(pagetable, va0) < 0){
+        return -1;
+      }
+    }
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
@@ -439,4 +443,43 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   } else {
     return -1;
   }
+}
+
+int is_cow_fault(pagetable_t pagetable, uint64 va){
+  if(va >= MAXVA){
+    return 0;
+  }
+  va = PGROUNDDOWN(va); // 获取page fault的地址
+  pte_t *pte = walk(pagetable, va, 0);  // 找到地址对应的pte
+  if(pte == 0)
+    return 0;
+  if((*pte & PTE_V) == 0)
+    return 0;
+  if((*pte & PTE_U) == 0)
+    return 0;
+  if(*pte & PTE_COW){ // 判断cow标志位
+    return 1;
+  }
+  return 0;
+}
+
+int cow_alloc(pagetable_t pagetable, uint64 va){
+  va = PGROUNDDOWN(va);   // 获取page fault出错的地址的页首地址
+  pte_t *pte = walk(pagetable, va, 0);
+  uint64 pa = PTE2PA(*pte);   // 获取其物理地址
+  int flag = PTE_FLAGS(*pte); // 获取pte的flag
+
+  char* mem = kalloc(); // 申请物理页
+  if(mem == 0){
+    return -1;
+  }
+  memmove(mem, (char *)pa, PGSIZE); // 把pa物理页上的值原封不动的复制到mem中
+  uvmunmap(pagetable, va, 1, 1);  // 解除子进程和原物理地址的映射关系，并释放其物理页（这里有问题啊）
+  flag &= ~(PTE_COW); // 清除cow上的标志位
+  flag |= PTE_W;  // 打开写标志位
+  if(mappages(pagetable, va, PGSIZE, (uint64)mem, flag) < 0){ // 新的物理页和子进程的映射
+    kfree(mem);
+    return -1;
+  }
+  return 0;
 }
