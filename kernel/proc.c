@@ -22,6 +22,10 @@ static void freeproc(struct proc *p);
 extern char trampoline[]; // trampoline.S
 
 // initialize the proc table at boot time.
+
+void info(char *fmt, ...);
+void scheduler_info(char *fmt, ...);
+
 void
 procinit(void)
 {
@@ -473,7 +477,7 @@ scheduler(void)
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
-        // before jumping back to us.
+        // before jumping back to us. 
         p->state = RUNNING;
         c->proc = p;
         swtch(&c->context, &p->context);

@@ -4,33 +4,37 @@
 #include <assert.h>
 #include <pthread.h>
 
-static int nthread = 1;
-static int round = 0;
+static int nthread = 1;   // 线程数
+static int round = 0;     // 当前轮次
 
 struct barrier {
-  pthread_mutex_t barrier_mutex;
-  pthread_cond_t barrier_cond;
-  int nthread;      // Number of threads that have reached this round of the barrier
-  int round;     // Barrier round
+  pthread_mutex_t barrier_mutex;  // 互斥锁
+  pthread_cond_t barrier_cond;  // 条件变量
+  int nthread;      // 已到达屏障的线程数
+  int round;     // 当前屏障轮次
 } bstate;
 
 static void
 barrier_init(void)
 {
-  assert(pthread_mutex_init(&bstate.barrier_mutex, NULL) == 0);
-  assert(pthread_cond_init(&bstate.barrier_cond, NULL) == 0);
-  bstate.nthread = 0;
+  assert(pthread_mutex_init(&bstate.barrier_mutex, NULL) == 0); // 初始化互斥锁
+  assert(pthread_cond_init(&bstate.barrier_cond, NULL) == 0); // 初始化条件变量
+  bstate.nthread = 0;   // 初始时无线程到达
 }
 
 static void 
 barrier()
 {
-  // YOUR CODE HERE
-  //
-  // Block until all threads have called barrier() and
-  // then increment bstate.round.
-  //
-  
+  pthread_mutex_lock(&bstate.barrier_mutex);
+  int n = ++bstate.nthread;
+  if(n == nthread){
+    ++bstate.round;   // 全局轮次+1
+    bstate.nthread = 0; // 重置到达的线程计数器
+    pthread_cond_broadcast(&bstate.barrier_cond); // 都到达了，广播唤醒所有等待进程
+  }else{
+    pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex); // 等待其他线程
+  }
+  pthread_mutex_unlock(&bstate.barrier_mutex);
 }
 
 static void *

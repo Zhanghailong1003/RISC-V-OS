@@ -5,17 +5,19 @@
 #include <pthread.h>
 #include <sys/time.h>
 
-#define NBUCKET 5
-#define NKEYS 100000
+#define NBUCKET 5       // 哈希桶的数量
+#define NKEYS 100000    // 总操作键数量
+
+pthread_mutex_t locks[NBUCKET];   // 为每个桶添加互斥锁
 
 struct entry {
   int key;
   int value;
-  struct entry *next;
+  struct entry *next;   // 链表解决哈希冲突
 };
-struct entry *table[NBUCKET];
-int keys[NKEYS];
-int nthread = 1;
+struct entry *table[NBUCKET]; // 哈希表
+int keys[NKEYS];  // 存储所有生成的键
+int nthread = 1;  // 线程数
 
 double
 now()
@@ -35,37 +37,44 @@ insert(int key, int value, struct entry **p, struct entry *n)
   *p = e;
 }
 
+void init_locks(){
+  for (int i = 0; i < NBUCKET; i++)
+  {
+    pthread_mutex_init(&locks[i], NULL);
+  }
+}
+
 static 
 void put(int key, int value)
 {
-  int i = key % NBUCKET;
-
-  // is the key already present?
-  struct entry *e = 0;
+  int i = key % NBUCKET;    // 计算桶索引
+  pthread_mutex_lock(&locks[i]);
+  struct entry *e = 0;      // 检查键是否已存在
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key)
       break;
   }
   if(e){
     // update the existing key.
-    e->value = value;
+    e->value = value; // 存在则更新值
   } else {
     // the new is new.
     insert(key, value, &table[i], table[i]);
   }
+  pthread_mutex_unlock(&locks[i]);
 }
 
 static struct entry*
 get(int key)
 {
   int i = key % NBUCKET;
-
+  pthread_mutex_lock(&locks[i]);
 
   struct entry *e = 0;
   for (e = table[i]; e != 0; e = e->next) {
     if (e->key == key) break;
   }
-
+  pthread_mutex_unlock(&locks[i]);
   return e;
 }
 
