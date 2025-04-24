@@ -374,66 +374,118 @@ iunlockput(struct inode *ip)
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
+
+// 逻辑块到物理块的映射
 static uint
 bmap(struct inode *ip, uint bn)
 {
-  uint addr, *a;
+  uint addr, *a, *b;
   struct buf *bp;
+  struct buf *inbp, *ininbp;
 
+  // 处理直接块
   if(bn < NDIRECT){
-    if((addr = ip->addrs[bn]) == 0)
-      ip->addrs[bn] = addr = balloc(ip->dev);
+    if((addr = ip->addrs[bn]) == 0)   // 直接块未分配
+      ip->addrs[bn] = addr = balloc(ip->dev);   // 分配新快并记录地址
     return addr;
   }
-  bn -= NDIRECT;
+  bn -= NDIRECT;    // 减去直接块数，进入间接处理
 
-  if(bn < NINDIRECT){
-    // Load indirect block, allocating if necessary.
-    if((addr = ip->addrs[NDIRECT]) == 0)
-      ip->addrs[NDIRECT] = addr = balloc(ip->dev);
-    bp = bread(ip->dev, addr);
-    a = (uint*)bp->data;
-    if((addr = a[bn]) == 0){
-      a[bn] = addr = balloc(ip->dev);
-      log_write(bp);
+  if(bn < NINDIRECT){   // 页码在 11 - 266 之间
+    // 检查间接块指针是否分配
+    if((addr = ip->addrs[NDIRECT]) == 0)    // 检查一级目录是否存在
+      ip->addrs[NDIRECT] = addr = balloc(ip->dev);  // 创建一级目录
+    bp = bread(ip->dev, addr);  // 读取一级目录内容
+    a = (uint*)bp->data;        // 缓存区数据转为uint数组
+    if((addr = a[bn]) == 0){    // 目标页未分配
+      a[bn] = addr = balloc(ip->dev);   // 分配新位置并记录
+      log_write(bp);  // 将修改写入日志
     }
-    brelse(bp);
+    brelse(bp);   // 释放缓冲区
+    return addr;  // 返回物理块地址
+  }
+  bn -= NINDIRECT;
+
+  if(bn < NININDIRECT){
+    if((addr = ip->addrs[NDIRECT + 1]) == 0)
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+    inbp = bread(ip->dev,addr);
+    a = (uint*)inbp->data;
+    if((addr = a[bn / NINDIRECT]) == 0){
+      a[bn/NINDIRECT] = addr = balloc(ip->dev);
+      log_write(inbp);
+    }
+    brelse(inbp);
+
+    ininbp = bread(ip->dev, addr);
+    b = (uint*)ininbp->data;
+    if((addr = b[bn % NINDIRECT]) == 0){
+      b[bn % NINDIRECT] = addr = balloc(ip->dev);
+      log_write(ininbp);
+    }
+    brelse(ininbp);
     return addr;
   }
 
-  panic("bmap: out of range");
+  panic("bmap: out of range");    // 超出最大文件范围报错
 }
 
 // Truncate inode (discard contents).
 // Caller must hold ip->lock.
+// 释放inode的所有数据块（直接和间接），将文件大小置0
 void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
-  uint *a;
+  int i, j, k;
+  struct buf *bp, *inbp;
+  uint *a, *b;
 
+  // 释放所有直接块
   for(i = 0; i < NDIRECT; i++){
-    if(ip->addrs[i]){
-      bfree(ip->dev, ip->addrs[i]);
-      ip->addrs[i] = 0;
+    if(ip->addrs[i]){               // 直接块已分配
+      bfree(ip->dev, ip->addrs[i]); // 释放块
+      ip->addrs[i] = 0;             // 清空地址
     }
   }
 
-  if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
+  // 释放间接块及指向的所有块
+  if(ip->addrs[NDIRECT]){     // 存在间接块
+    bp = bread(ip->dev, ip->addrs[NDIRECT]);  // 读取间接块
+    a = (uint*)bp->data;      // 缓冲区数据转未uint数组
+    for(j = 0; j < NINDIRECT; j++){   // 遍历间接块的所有条目
+      if(a[j])    // 条目指向已分配块
+        bfree(ip->dev, a[j]); // 释放块
+    }
+    brelse(bp);   // 释放间接块缓冲区
+    bfree(ip->dev, ip->addrs[NDIRECT]);   // 释放间接块本身
+    ip->addrs[NDIRECT] = 0; // 清空间接块指针
+  }
+
+  if(ip->addrs[NDIRECT + 1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT + 1]);
     a = (uint*)bp->data;
-    for(j = 0; j < NINDIRECT; j++){
-      if(a[j])
+    for (int j = 0; j < NINDIRECT; j++)
+    {
+      if(a[j]){
+        inbp = bread(ip->dev, a[j]);
+        b = (uint*)inbp->data;
+        for (k = 0; k < NINDIRECT; k++)
+        {
+          if(b[k])
+            bfree(ip->dev, b[k]);
+        }
+        brelse(inbp);
         bfree(ip->dev, a[j]);
+      }
     }
     brelse(bp);
-    bfree(ip->dev, ip->addrs[NDIRECT]);
-    ip->addrs[NDIRECT] = 0;
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
+    ip->addrs[NDIRECT + 1] = 0;
   }
 
-  ip->size = 0;
-  iupdate(ip);
+
+  ip->size = 0;   // 文件大小置0
+  iupdate(ip);    // 更新磁盘上的inode信息
 }
 
 // Copy stat information from inode.
