@@ -4,10 +4,10 @@
 
 int main(int argc, char* argv[]){
     if(argc != 2){
-        fprintf(2,"Not input correct params! \n");
+        fprintf(2,"Not Input the correct params! \n");
         exit(1);
     }
     int a = atoi(argv[1]);
-    int ret = sleep(a);
-    exit(ret);
+    sleep(a);
+    exit(0);
 }
