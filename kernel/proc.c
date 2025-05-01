@@ -8,12 +8,12 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct proc proc[NPROC];  // 进程控制块数组
 
-struct proc *initproc;
+struct proc *initproc;  // 指向第一个用户进程
 
-int nextpid = 1;
-struct spinlock pid_lock;
+int nextpid = 1;    // 下一个可用进程的ID
+struct spinlock pid_lock;   // pid分配锁
 
 extern void forkret(void);
 static void wakeup1(struct proc *chan);
@@ -23,7 +23,7 @@ extern char trampoline[]; // trampoline.S
 
 // initialize the proc table at boot time.
 void
-procinit(void)
+procinit(void)  // 进程初始化
 {
   struct proc *p;
   
@@ -34,12 +34,12 @@ procinit(void)
       // Allocate a page for the process's kernel stack.
       // Map it high in memory, followed by an invalid
       // guard page.
-      char *pa = kalloc();
+      char *pa = kalloc();  // 为每个进程分配内核栈
       if(pa == 0)
         panic("kalloc");
-      uint64 va = KSTACK((int) (p - proc));
-      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-      p->kstack = va;
+      uint64 va = KSTACK((int) (p - proc)); // 计算内核栈虚拟地址
+      kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);  // 映射到内核页表
+      p->kstack = va;   // 记录内核栈虚拟地址
   }
   kvminithart();
 }
@@ -90,7 +90,7 @@ allocpid() {
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct proc*
-allocproc(void)
+allocproc(void)   // 分配进程控制块
 {
   struct proc *p;
 
@@ -105,27 +105,27 @@ allocproc(void)
   return 0;
 
 found:
-  p->pid = allocpid();
+  p->pid = allocpid();  // 分配进程唯一PID
 
-  // Allocate a trapframe page.
+  // 分配陷阱帧内存（用户态和内核态切换时保存寄存器）
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     release(&p->lock);
     return 0;
   }
 
-  // An empty user page table.
+  // 创建用户页表
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
-    freeproc(p);
+    freeproc(p);        // 失败时释放已分配的资源
     release(&p->lock);
     return 0;
   }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
-  memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
-  p->context.sp = p->kstack + PGSIZE;
+  memset(&p->context, 0, sizeof(p->context)); // 初始化上下文
+  p->context.ra = (uint64)forkret;  // 返回地址设置为forkret，这个函数会释放进程锁并返回用户空间
+  p->context.sp = p->kstack + PGSIZE;   // 内核栈顶地址
 
   return p;
 }
@@ -210,7 +210,7 @@ uchar initcode[] = {
 
 // Set up first user process.
 void
-userinit(void)
+userinit(void)  // 创建第一个用户进程
 {
   struct proc *p;
 
@@ -261,45 +261,45 @@ fork(void)
 {
   int i, pid;
   struct proc *np;
-  struct proc *p = myproc();
+  struct proc *p = myproc();    // 获取当前进程
 
   // Allocate process.
-  if((np = allocproc()) == 0){
+  if((np = allocproc()) == 0){  // 分配子进程结构
     return -1;
   }
 
-  np->trace_mask = p->trace_mask;
+  np->trace_mask = p->trace_mask; // 继承跟踪掩码
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){  // 复制父进程用户内存到子进程
     freeproc(np);
     release(&np->lock);
     return -1;
   }
-  np->sz = p->sz;
+  np->sz = p->sz; // 继承内存大小
 
-  np->parent = p;
+  np->parent = p; // 设置父进程指针
 
   // copy saved user registers.
-  *(np->trapframe) = *(p->trapframe);
+  *(np->trapframe) = *(p->trapframe); // 复制陷阱帧
 
   // Cause fork to return 0 in the child.
-  np->trapframe->a0 = 0;
+  np->trapframe->a0 = 0;  // 子进程返回0
 
   // increment reference counts on open file descriptors.
-  for(i = 0; i < NOFILE; i++)
+  for(i = 0; i < NOFILE; i++) // 复制打开的文件
     if(p->ofile[i])
       np->ofile[i] = filedup(p->ofile[i]);
-  np->cwd = idup(p->cwd);
+  np->cwd = idup(p->cwd);   // 复制工作目录
 
-  safestrcpy(np->name, p->name, sizeof(p->name));
+  safestrcpy(np->name, p->name, sizeof(p->name));   // 复制进程名
 
   pid = np->pid;
 
-  np->state = RUNNABLE;
+  np->state = RUNNABLE; // 设为可运行状态
 
-  release(&np->lock);
+  release(&np->lock); // 释放子进程锁
 
-  return pid;
+  return pid; // 返回子进程的PID
 }
 
 // Pass p's abandoned children to init.
@@ -339,7 +339,7 @@ exit(int status)
   if(p == initproc)
     panic("init exiting");
 
-  // Close all open files.
+  // 关闭所有打开的文件
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){
       struct file *f = p->ofile[fd];
@@ -348,9 +348,9 @@ exit(int status)
     }
   }
 
-  begin_op();
-  iput(p->cwd);
-  end_op();
+  begin_op();     // 文件系统事务开始
+  iput(p->cwd);   // 释放当前目录
+  end_op();       // 提交文件系统操作
   p->cwd = 0;
 
   // we might re-parent a child to init. we can't be precise about
@@ -358,7 +358,7 @@ exit(int status)
   // acquired any other proc lock. so wake up init whether that's
   // necessary or not. init may miss this wakeup, but that seems
   // harmless.
-  acquire(&initproc->lock);
+  acquire(&initproc->lock); // 唤醒init进程
   wakeup1(initproc);
   release(&initproc->lock);
 
@@ -368,7 +368,7 @@ exit(int status)
   // exiting parent, but the result will be a harmless spurious wakeup
   // to a dead or wrong process; proc structs are never re-allocated
   // as anything else.
-  acquire(&p->lock);
+  acquire(&p->lock);  // 获取父进程锁
   struct proc *original_parent = p->parent;
   release(&p->lock);
   
@@ -379,13 +379,13 @@ exit(int status)
   acquire(&p->lock);
 
   // Give any children to init.
-  reparent(p);
+  reparent(p);    // 将子进程的父进程设为init
 
   // Parent might be sleeping in wait().
-  wakeup1(original_parent);
+  wakeup1(original_parent); // 唤醒父进程的wait
 
-  p->xstate = status;
-  p->state = ZOMBIE;
+  p->xstate = status;   // 保存退出状态
+  p->state = ZOMBIE;    // 标记为僵尸状态
 
   release(&original_parent->lock);
 

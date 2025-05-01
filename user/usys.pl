@@ -10,9 +10,9 @@ sub entry {
     my $name = shift;
     print ".global $name\n";
     print "${name}:\n";
-    print " li a7, SYS_${name}\n";
-    print " ecall\n";
-    print " ret\n";
+    print " li a7, SYS_${name}\n";      # 加载系统调用号到a7
+    print " ecall\n";                   # 触发软中断
+    print " ret\n";                     # 返回用户程序
 }
 	
 entry("fork");

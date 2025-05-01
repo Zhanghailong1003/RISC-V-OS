@@ -14,7 +14,7 @@ fetchaddr(uint64 addr, uint64 *ip)
   struct proc *p = myproc();
   if(addr >= p->sz || addr+sizeof(uint64) > p->sz)
     return -1;
-  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
+  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)  // 从用户页表复制数据到内核空间
     return -1;
   return 0;
 }
@@ -25,14 +25,14 @@ int
 fetchstr(uint64 addr, char *buf, int max)
 {
   struct proc *p = myproc();
-  int err = copyinstr(p->pagetable, buf, addr, max);
+  int err = copyinstr(p->pagetable, buf, addr, max);    // 复制字符串到内核缓冲区
   if(err < 0)
     return err;
-  return strlen(buf);
+  return strlen(buf); // 返回字符产的长度
 }
 
 static uint64
-argraw(int n)
+argraw(int n)   // 寄存器参数获取
 {
   struct proc *p = myproc();
   switch (n) {
@@ -55,7 +55,7 @@ argraw(int n)
 
 // Fetch the nth 32-bit system call argument.
 int
-argint(int n, int *ip)
+argint(int n, int *ip)  // 获取整数参数
 {
   *ip = argraw(n);
   return 0;
@@ -65,7 +65,7 @@ argint(int n, int *ip)
 // Doesn't check for legality, since
 // copyin/copyout will do that.
 int
-argaddr(int n, uint64 *ip)
+argaddr(int n, uint64 *ip)  // 获取指针参数
 {
   *ip = argraw(n);
   return 0;
@@ -75,7 +75,7 @@ argaddr(int n, uint64 *ip)
 // Copies into buf, at most max.
 // Returns string length if OK (including nul), -1 if error.
 int
-argstr(int n, char *buf, int max)
+argstr(int n, char *buf, int max) // 获取字符串参数
 {
   uint64 addr;
   if(argaddr(n, &addr) < 0)
@@ -144,10 +144,10 @@ syscall(void)
   int num;
   struct proc *p = myproc();
 
-  num = p->trapframe->a7;
+  num = p->trapframe->a7;   // 获取系统调用号
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    int trace_mask = p->trace_mask;
-    p->trapframe->a0 = syscalls[num]();
+    int trace_mask = p->trace_mask;   // 获取跟踪参数掩码
+    p->trapframe->a0 = syscalls[num]();   // 执行系统调用并把返回值存入a0寄存器
     if((trace_mask >> num) & 1){
       printf("%d: syscall %s -> %d \n",p->pid, syscall_names[num - 1], p->trapframe->a0);
     }
