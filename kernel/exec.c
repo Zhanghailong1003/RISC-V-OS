@@ -117,11 +117,11 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
-  if(pagecopy(p->pagetable, p->kpagetable, 0, p->sz) != 0){
+  if(pagecopy(p->pagetable, p->kpagetable, 0, p->sz) != 0){ // 将进程的用户页表中的映射复制到内核页表
     goto bad;
   }
-  w_satp(MAKE_SATP(p->kpagetable));
-  sfence_vma();
+  w_satp(MAKE_SATP(p->kpagetable)); // 将页表基址设为进程的内核页表
+  sfence_vma(); // 切换页表，执行TLB刷新
 
   if(p->pid==1) vmprint(p->pagetable, 0);
 

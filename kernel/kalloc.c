@@ -15,23 +15,23 @@ extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
 
 struct run {
-  struct run *next;
+  struct run *next; // 空闲页链表的节点指针
 };
 
 struct {
-  struct spinlock lock;
-  struct run *freelist;
+  struct spinlock lock; // 保护空闲链表的自旋锁
+  struct run *freelist; // 空闲链表头指针
 } kmem;
 
 void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  freerange(end, (void*)PHYSTOP);   // 将这个范围内的所有可用物理内存初始化位空闲页
 }
 
 void
-freerange(void *pa_start, void *pa_end)
+freerange(void *pa_start, void *pa_end)   // 释放内存范围
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
@@ -44,15 +44,15 @@ freerange(void *pa_start, void *pa_end)
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
 void
-kfree(void *pa)
+kfree(void *pa) // 释放单页内存
 {
   struct run *r;
-
+  // 检查地址合法
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
   // Fill with junk to catch dangling refs.
-  memset(pa, 1, PGSIZE);
+  memset(pa, 1, PGSIZE);  // 填充垃圾数据
 
   r = (struct run*)pa;
 
@@ -66,7 +66,7 @@ kfree(void *pa)
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 void *
-kalloc(void)
+kalloc(void)  // 分配单页内存
 {
   struct run *r;
 
