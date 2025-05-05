@@ -154,6 +154,6 @@ sys_sigreturn(void)
   struct proc *p = myproc();
   p->trapframe->epc = p->tick_epc;
   restore();
-  p->handle_executing = 0;
+  p->handle_executing = 0;  // 置回标志位，防止重复调用
   return 0;
 }

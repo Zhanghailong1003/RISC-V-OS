@@ -104,10 +104,10 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  int ticks;
-  int ticks_cnt;
-  uint64 handler;
-  int handle_executing;
+  int ticks;      // 定时的时间
+  int ticks_cnt;  // 经历的时间
+  uint64 handler; // 处理函数
+  int handle_executing; // 标志位
   uint64 tick_epc;
 
   uint64 tick_ra;
