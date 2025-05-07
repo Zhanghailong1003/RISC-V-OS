@@ -68,9 +68,9 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else if(r_scause() == 15 || r_scause() == 13){  // page fault
-    uint64 va = r_stval();
-    if(is_cow_fault(p->pagetable, va)){
-      if(cow_alloc(p->pagetable, va)){
+    uint64 va = r_stval();  // 获取va
+    if(is_cow_fault(p->pagetable, va)){ // 判断是否是COW fault
+      if(cow_alloc(p->pagetable, va)){  // 进行cow分配
         printf("usertrap(): cow_alloc failed");
         p->killed = 1;
       }

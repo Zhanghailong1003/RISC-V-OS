@@ -19,11 +19,11 @@ struct run {
 };
 
 struct {
-  struct spinlock lock;
-  struct run *freelist;
-  char *ref_page;
-  int page_cnt;
-  char * _end;
+  struct spinlock lock;   // 自旋锁
+  struct run *freelist;   // 空闲页链表
+  char *ref_page;   // 引用计数数组的起始地址
+  int page_cnt;     // 物理页总数
+  char * _end;      // 引用计数数组的结束地址
 } kmem;
 
 // 计算一下有多少个物理页
@@ -38,7 +38,7 @@ pagecnt(void *pa_start, void *pa_end){
 }
 
 void
-kinit()
+kinit()   // 初始化函数
 {
   initlock(&kmem.lock, "kmem");
   kmem.page_cnt = pagecnt(end, (void *)PHYSTOP);  // 计算一下物理页的个数
@@ -53,7 +53,7 @@ kinit()
 }
 
 int
-page_index(uint64 pa){
+page_index(uint64 pa){  // 地址转换，转换成页索引
   pa = PGROUNDDOWN(pa);
   int res = (pa - (uint64)end)/PGSIZE;
   if(res < 0 || res >= kmem.page_cnt){  // 超过目录数量

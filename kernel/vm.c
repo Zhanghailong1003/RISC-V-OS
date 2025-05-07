@@ -319,13 +319,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    *pte = *pte & ~(PTE_W);       // 清除写权限
+    *pte = *pte & ~(PTE_W);       // 清除父进程中所有PTE的写权限
     *pte = *pte | PTE_COW;        // 声明一个cow page
     flags = PTE_FLAGS(*pte);
-    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){ // 原先传入的是申请的mem，现在直接传入pa即可，将父进程映射的物理页直接map到子进程中，权限保证一致
       goto err;
     }
-    incr((void *)pa);
+    incr((void *)pa); // 映射的物理页的引用数+1
   }
   return 0;
 
@@ -351,7 +351,7 @@ uvmclear(pagetable_t pagetable, uint64 va)
 // Copy len bytes from src to virtual address dstva in a given page table.
 // Return 0 on success, -1 on error.
 int
-copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len) // 内核向用户空间写数据时处理COW
 {
   uint64 n, va0, pa0;
 
@@ -450,7 +450,7 @@ int is_cow_fault(pagetable_t pagetable, uint64 va){
     return 0;
   }
   va = PGROUNDDOWN(va); // 获取page fault的地址
-  pte_t *pte = walk(pagetable, va, 0);  // 找到地址对应的pte
+  pte_t *pte = walk(pagetable, va, 0);  // 找到虚拟地址对应的pte
   if(pte == 0)
     return 0;
   if((*pte & PTE_V) == 0)
@@ -465,16 +465,16 @@ int is_cow_fault(pagetable_t pagetable, uint64 va){
 
 int cow_alloc(pagetable_t pagetable, uint64 va){
   va = PGROUNDDOWN(va);   // 获取page fault出错的地址的页首地址
-  pte_t *pte = walk(pagetable, va, 0);
+  pte_t *pte = walk(pagetable, va, 0);  // 找到虚拟地址对应的PTE
   uint64 pa = PTE2PA(*pte);   // 获取其物理地址
   int flag = PTE_FLAGS(*pte); // 获取pte的flag
 
-  char* mem = kalloc(); // 申请物理页
+  char* mem = kalloc(); // 申请新分配的物理页
   if(mem == 0){
     return -1;
   }
   memmove(mem, (char *)pa, PGSIZE); // 把pa物理页上的值原封不动的复制到mem中
-  uvmunmap(pagetable, va, 1, 1);  // 解除子进程和原物理地址的映射关系，并释放其物理页（这里有问题啊）
+  uvmunmap(pagetable, va, 1, 1);  // 解除子进程和原物理地址的映射关系（并释放其物理页），不一定释放看引用计数是否为0
   flag &= ~(PTE_COW); // 清除cow上的标志位
   flag |= PTE_W;  // 打开写标志位
   if(mappages(pagetable, va, PGSIZE, (uint64)mem, flag) < 0){ // 新的物理页和子进程的映射
