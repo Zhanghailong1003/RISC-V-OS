@@ -51,7 +51,7 @@ sys_sbrk(void)
   //   return -1;
   
   if(n > 0){
-    myproc()->sz += n;
+    myproc()->sz += n;  // 只增加尺寸大小，不实际分配物理页
   }else{    // 处理sbrk()参数为负的情况
     if(myproc()->sz + n < 0){
       return -1;

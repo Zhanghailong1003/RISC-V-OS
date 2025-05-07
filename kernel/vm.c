@@ -92,22 +92,23 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 // or 0 if not mapped.
 // Can only be used to look up user pages.
 uint64
-walkaddr(pagetable_t pagetable, uint64 va)
+walkaddr(pagetable_t pagetable, uint64 va)  // 根据虚拟地址找到物理地址，但是由于lazy allocation有可能没分配物理地址
 {
   pte_t *pte;
   uint64 pa;
 
-  if(va >= MAXVA)
+  if(va >= MAXVA) // 虚拟地址范围检查
     return 0;
 
-  pte = walk(pagetable, va, 0);
-  if(pte == 0 || (*pte & PTE_V) == 0){
-    if(is_lazy_alloc_va(va)){
-      if(lazy_alloc(va) < 0){
+  pte = walk(pagetable, va, 0); // 根据虚拟地址找到对应的页表项
+  if(pte == 0 || (*pte & PTE_V) == 0){  // 若中间页表不存在或页表项不存在
+    if(is_lazy_alloc_va(va)){   // 判断va是否是懒分配区域
+      if(lazy_alloc(va) < 0){   // 分配物理页并建立映射，这样在执行一次就可以了
         return 0;
       }
-      pte = walk(pagetable, va, 0);
+      return walkaddr(pagetable, va);
     }
+    return 0;
   }
  
   pa = PTE2PA(*pte);
@@ -183,12 +184,12 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     panic("uvmunmap: not aligned");
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    if((pte = walk(pagetable, a, 0)) == 0){
+    if((pte = walk(pagetable, a, 0)) == 0){ // 未找到页表页直接continue即可
       //panic("uvmunmap: walk");
       continue;
     }
       
-    if((*pte & PTE_V) == 0){
+    if((*pte & PTE_V) == 0){      // 就是本来就没有分配物理内存，所以即使无效，也不需要释放物理页，或者出错，直接continue即可
       // panic("uvmunmap: not mapped");
       continue;
     }
@@ -327,7 +328,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       continue;
     }
       
-    if((*pte & PTE_V) == 0){
+    if((*pte & PTE_V) == 0){  // 物理页未分配，不存在映射关系
       // panic("uvmcopy: page not present");
       continue;
     }
@@ -372,7 +373,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = walkaddr(pagetable, va0);   // 类似错误也会发生在这
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
@@ -397,7 +398,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
-    pa0 = walkaddr(pagetable, va0);
+    pa0 = walkaddr(pagetable, va0); // 根据虚拟地址找到物理地址的值，但是由于懒分配策略，很有可能找不到物理地址的值
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (srcva - va0);

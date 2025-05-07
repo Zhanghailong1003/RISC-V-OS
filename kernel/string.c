@@ -28,7 +28,7 @@ memcmp(const void *v1, const void *v2, uint n)
 }
 
 void*
-memmove(void *dst, const void *src, uint n)
+memmove(void *dst, const void *src, uint n)   // 用软件的方式往实际的物理地址上写值，内核操作
 {
   const char *s;
   char *d;

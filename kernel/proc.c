@@ -254,19 +254,19 @@ growproc(int n)
 }
 
 int
-is_lazy_alloc_va(uint64 va){
+is_lazy_alloc_va(uint64 va){    // 判断是否是懒分配
   struct proc *p = myproc();
   if(va >= p->sz){      // 如果某个进程在高于sbrk()分配的任何虚拟内存地址上出现页错误，则终止该进程
     return 0;
   }
-  if(va < PGROUNDDOWN(p->trapframe->sp) && va >= PGROUNDDOWN(p->trapframe->sp) - PGSIZE){ // 处理用户栈下面的无效页面上发生的错误
+  if(va < PGROUNDDOWN(p->trapframe->sp) && va >= PGROUNDDOWN(p->trapframe->sp) - PGSIZE){ // 处理用户栈下面的无效页面上（即保护页）发生的错误
     return 0;
   }
   return 1;
 }
 
 int
-lazy_alloc(uint64 va){
+lazy_alloc(uint64 va){  // 进行懒分配，懒分配之前本来就没有分配，所以也就不用删除
   va = PGROUNDDOWN(va);
   char *mem = kalloc();
   if(mem == 0){
