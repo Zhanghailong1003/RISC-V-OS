@@ -25,8 +25,8 @@ barrier_init(void)
 static void 
 barrier()
 {
-  pthread_mutex_lock(&bstate.barrier_mutex);
-  int n = ++bstate.nthread;
+  pthread_mutex_lock(&bstate.barrier_mutex);  // 进入临界区
+  int n = ++bstate.nthread; // 当前到达进程数+1
   if(n == nthread){
     ++bstate.round;   // 全局轮次+1
     bstate.nthread = 0; // 重置到达的线程计数器
@@ -34,7 +34,7 @@ barrier()
   }else{
     pthread_cond_wait(&bstate.barrier_cond, &bstate.barrier_mutex); // 等待其他线程
   }
-  pthread_mutex_unlock(&bstate.barrier_mutex);
+  pthread_mutex_unlock(&bstate.barrier_mutex);  // 退出临界区
 }
 
 static void *
@@ -45,10 +45,10 @@ thread(void *xa)
   int i;
 
   for (i = 0; i < 20000; i++) {
-    int t = bstate.round;
-    assert (i == t);
-    barrier();
-    usleep(random() % 100);
+    int t = bstate.round; // 读取当前屏障轮次
+    assert (i == t);      // 确保线程执行轮次与屏障同步
+    barrier();            // 等待所有线程到达
+    usleep(random() % 100); // 随机延迟模拟工作负载
   }
 
   return 0;

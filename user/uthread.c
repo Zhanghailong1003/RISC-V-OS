@@ -3,14 +3,14 @@
 #include "user/user.h"
 
 /* Possible states of a thread: */
-#define FREE        0x0
-#define RUNNING     0x1
-#define RUNNABLE    0x2
+#define FREE        0x0     // 未使用
+#define RUNNING     0x1     // 运行中
+#define RUNNABLE    0x2     // 可调度
 
-#define STACK_SIZE  8192
-#define MAX_THREAD  4
+#define STACK_SIZE  8192    // 每个线程的栈大小
+#define MAX_THREAD  4       // 4个线程
 
-struct thread_context{
+struct thread_context{      // 保存线程的上下文信息
   uint64 ra;
   uint64 sp;
 
@@ -28,18 +28,18 @@ struct thread_context{
   uint64 s11;
 };
 
-struct thread {
-  struct thread_context context;
+struct thread {   // 线程结构体
+  struct thread_context context; 
   char       stack[STACK_SIZE]; /* the thread's stack */
   int        state;             /* FREE, RUNNING, RUNNABLE */
 
 };
-struct thread all_thread[MAX_THREAD];
-struct thread *current_thread;
+struct thread all_thread[MAX_THREAD];   // 全局线程数组
+struct thread *current_thread;          // 当前线程数组
 extern void thread_switch(uint64, uint64);
               
 void 
-thread_init(void)
+thread_init(void) // 线程初始化
 {
   // main() is thread 0, which will make the first invocation to
   // thread_schedule().  it needs a stack so that the first thread_switch() can
@@ -57,10 +57,10 @@ thread_schedule(void)
 
   /* Find another runnable thread. */
   next_thread = 0;
-  t = current_thread + 1;
+  t = current_thread + 1;     // 从当前线程的下一个开始搜索
   for(int i = 0; i < MAX_THREAD; i++){
-    if(t >= all_thread + MAX_THREAD)
-      t = all_thread;
+    if(t >= all_thread + MAX_THREAD)  // 越界
+      t = all_thread; // 从头开始
     if(t->state == RUNNABLE) {
       next_thread = t;
       break;
@@ -68,17 +68,17 @@ thread_schedule(void)
     t = t + 1;
   }
 
-  if (next_thread == 0) {
+  if (next_thread == 0) {   // 无可用线程则报错退出
     printf("thread_schedule: no runnable threads\n");
     exit(-1);
   }
 
-  if (current_thread != next_thread) {         // 更新线程
-    next_thread->state = RUNNING;
+  if (current_thread != next_thread) {         // 切换线程
+    next_thread->state = RUNNING;               // 新线程状态更新
     t = current_thread;
-    current_thread = next_thread;
+    current_thread = next_thread;   // 更改当前线程
     
-    thread_switch((uint64)t, (uint64)current_thread);
+    thread_switch((uint64)t, (uint64)current_thread); // 切换上下文
 
   } else
     next_thread = 0;
@@ -94,7 +94,7 @@ thread_create(void (*func)())
   }
   t->state = RUNNABLE;
   t->context.sp = (uint64)((char *)&t->stack + STACK_SIZE);   // 栈是向下增长的
-  t->context.ra = (uint64)(func);
+  t->context.ra = (uint64)(func); // 返回地址设为线程入口函数
 }
 
 void 

@@ -518,7 +518,7 @@ sched(void)
     panic("sched interruptible");
 
   intena = mycpu()->intena;
-  swtch(&p->context, &mycpu()->context);
+  swtch(&p->context, &mycpu()->context);  // 切换到调度器的上下文
   mycpu()->intena = intena;
 }
 
