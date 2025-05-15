@@ -316,28 +316,29 @@ sys_open(void)
     }
   }
 
-  int depth = 0;
-  while(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)){
-    char ktarget[MAXPATH];
-    memset(ktarget, 0, MAXPATH);
+  int depth = 0;    // 递归深度计数器，防止符号链接循环
+  while(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)){  // 当前文件是符号链接且未设置O_NOFOLLOW标志
+    char ktarget[MAXPATH];  // 存储符号链接指向的目标路径
+    memset(ktarget, 0, MAXPATH);  // 清空缓冲区
 
-    if(readi(ip, 0, (uint64)ktarget, 0, MAXPATH) < 0){
-      iunlockput(ip);
-      end_op();
+    // 从符号链接文件内容中读取目标路径
+    if(readi(ip, 0, (uint64)ktarget, 0, MAXPATH) < 0){  // 从inode中读取MAXPATH字节到ktarget
+      iunlockput(ip); // 解锁并释放当前符号链接的inode
+      end_op(); // 结束文件系统事务
+      return -1;  // 返回错误
+    }
+    iunlockput(ip); // 解锁并减少引用计数
+
+    if((ip = namei(ktarget)) == 0){ // 通过路径ktarget查找目标inode
+      end_op(); // 结束事务
       return -1;
     }
-    iunlockput(ip);
-
-    if((ip = namei(ktarget)) == 0){
-      end_op();
-      return -1;
-    }
-    ilock(ip);
-    depth++;
-    if(depth > 10){
-      iunlockput(ip);
-      end_op();
-      return -1;
+    ilock(ip);  // 对inode加锁
+    depth++;  // 递归深度增加
+    if(depth > 10){ // 防止符号链接循环或过深嵌套
+      iunlockput(ip); // 解锁并释放inode
+      end_op(); // 结束事务
+      return -1;  // 返回错误
     }
   }
 
@@ -511,33 +512,33 @@ sys_pipe(void)
 }
 
 int sys_symlink(char *target, char *path){    // target 指向的目标路径  path 软连接自身的路径
-  char kpath[MAXPATH], ktarget[MAXPATH];
-  memset(kpath, 0, MAXPATH);
-  memset(ktarget, 0, MAXPATH);
-  struct inode* ip;
-  int n, r;
-  if((n = argstr(0, ktarget, MAXPATH)) < 0)
+  char kpath[MAXPATH], ktarget[MAXPATH];  //  内核空间存储路径的缓冲区
+  memset(kpath, 0, MAXPATH);  // 清空kpath
+  memset(ktarget, 0, MAXPATH);  // 清空ktarget
+  struct inode* ip; // 符号链接文件的inode指针
+  int n, r; // 临时变量
+  if((n = argstr(0, ktarget, MAXPATH)) < 0) // 从用户空间复制第一个参数到ktarget
     return -1;
-  if((n = argstr(0, kpath, MAXPATH)) < 0)
+  if((n = argstr(1, kpath, MAXPATH)) < 0) // 从用户空间复制第二个参数到kpath
     return -1;
 
-  int ret = 0;
-  begin_op();
-  if((ip = namei(kpath)) != 0){
+  int ret = 0;  // 初始化返回值为0
+  begin_op(); // 开始文件系统操作，确保文件系统操作的原子性
+  if((ip = namei(kpath)) != 0){ // 检查路径kpath是否已存在，即软链接是否已存在
+    ret = -1; // 存在则返回错误
+    goto final; // 跳转到事务结束
+  }
+
+  ip = create(kpath, T_SYMLINK, 0, 0);  // 创建类型为T_SYMLINK的文件，并软连接新的inode
+  if(ip == 0){  // 创建失败
     ret = -1;
     goto final;
   }
 
-  ip = create(kpath, T_SYMLINK, 0, 0);
-  if(ip == 0){
-    ret = -1;
-    goto final;
-  }
-
-  if((r = writei(ip, 0, (uint64)ktarget, 0, MAXPATH)) < 0)
+  if((r = writei(ip, 0, (uint64)ktarget, 0, MAXPATH)) < 0)  // 将ktarget写入符号链接文件
     ret = -1;
 
-  iunlockput(ip);
+  iunlockput(ip); // 解锁并释放inode引用
 
 final:
   end_op();
