@@ -66,45 +66,45 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if(r_scause() == 13 || r_scause() == 15){
-    uint64 va = r_stval();
-    struct proc* p = myproc();
-    if(va > MAXVA || va > p->sz){
+  } else if(r_scause() == 13 || r_scause() == 15){  // 读取或写入未映射的虚拟地址
+    uint64 va = r_stval();  // 获取触发缺页的虚拟地址
+    struct proc* p = myproc(); 
+    if(va > MAXVA || va > p->sz){ // 虚拟地址是否超出进程的地址空间大小
       p->killed = 1;
     }else{
       int found = 0;
-      for (int i = 0; i < NVMA; i++)
+      for (int i = 0; i < NVMA; i++)  // 遍历VMA查找匹配区域
       {
         struct vma* vma = &p->vmas[i];
-        if(vma->valid && va >= vma->addr && va < vma->addr + vma->length){
-          va = PGROUNDDOWN(va);
-          uint64 pa = (uint64)kalloc();
-          if(pa == 0){
+        if(vma->valid && va >= vma->addr && va < vma->addr + vma->length){  // VMA有效，且va在VMA的地址范围内
+          va = PGROUNDDOWN(va); // 对齐页边界
+          uint64 pa = (uint64)kalloc(); // 分配物理页
+          if(pa == 0){  // 分配失败则跳出
             break;
           }
-          memset((void *)pa, 0, PGSIZE);
-          ilock(vma->f->ip);
-          if(readi(vma->f->ip, 0, pa, vma->offset + va - vma->addr, PGSIZE) < 0){   // 第4个参数是实际映射文件的大小
+          memset((void *)pa, 0, PGSIZE);  // 将分配的物理页置0
+          ilock(vma->f->ip);  // 加锁文件的inode，防止其他进程并发修改文件
+          if(readi(vma->f->ip, 0, pa, vma->offset + va - vma->addr, PGSIZE) < 0){   // 从文件读取PGSIZE字节到物理页
             iunlock(vma->f->ip);
             break;
           }
-          iunlock(vma->f->ip);
-          int perm = PTE_U;
-          if(vma->prot & PROT_READ)
+          iunlock(vma->f->ip);  // 解锁文件的inode
+          int perm = PTE_U; // 用户态可访问
+          if(vma->prot & PROT_READ) // 读权限
             perm |= PTE_R;
-          if(vma->prot & PROT_WRITE)
+          if(vma->prot & PROT_WRITE)  // 写权限
             perm |= PTE_W;
-          if(vma->prot & PROT_EXEC)
+          if(vma->prot & PROT_EXEC) // 执行权限
             perm |= PTE_X;
-          if(mappages(p->pagetable, va, PGSIZE, pa, perm) < 0){
-            kfree((void*)pa);
+          if(mappages(p->pagetable, va, PGSIZE, pa, perm) < 0){   // 将物理页pa映射到虚拟地址va
+            kfree((void*)pa);   // 映射失败释放物理页
             break;
           }
-          found = 1;
+          found = 1;  // 标记已处理
           break;
         }
       }
-      if(!found)
+      if(!found)    // 未找到匹配，标记进程被杀死
         p->killed = 1;
     }
     

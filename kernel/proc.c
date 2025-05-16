@@ -300,12 +300,12 @@ fork(void)
 
   pid = np->pid;
 
-  for (int i = 0; i < NVMA; i++)
+  for (int i = 0; i < NVMA; i++)  // 遍历VMA数组
   {
-    np->vmas[i].valid = 0;
-    if(p->vmas[i].valid){
-      memmove(&np->vmas[i], &p->vmas[i], sizeof(struct vma));
-      filedup(p->vmas[i].f);
+    np->vmas[i].valid = 0;  // 将子进程的VMA标记为未使用
+    if(p->vmas[i].valid){ // 检查父进程的VMA有效
+      memmove(&np->vmas[i], &p->vmas[i], sizeof(struct vma)); // 复制父进程的VMA结构体到子进程
+      filedup(p->vmas[i].f);  // 增加引用次数
     }
   }
 
@@ -362,15 +362,15 @@ exit(int status)
     }
   }
 
-  for (int i = 0; i < NVMA; i++)
+  for (int i = 0; i < NVMA; i++)  // 遍历进程的所有VMA条目
   {
     if(p->vmas[i].valid){
-      if(p->vmas[i].flags & MAP_SHARED){
+      if(p->vmas[i].flags & MAP_SHARED){  // 若VMA是共享映射，将修改的页写回文件
         filewrite(p->vmas[i].f, p->vmas[i].addr, p->vmas[i].length);
       }
-      fileclose(p->vmas[i].f);
-      uvmunmap(p->pagetable, p->vmas[i].addr, p->vmas[i].length / PGSIZE, 1);
-      p->vmas[i].valid = 0;
+      fileclose(p->vmas[i].f);  // 关闭文件
+      uvmunmap(p->pagetable, p->vmas[i].addr, p->vmas[i].length / PGSIZE, 1); // 解除页表映射
+      p->vmas[i].valid = 0; // 标记该VMA无效
     }
   }
   

@@ -487,39 +487,40 @@ sys_pipe(void)
 
 uint64
 sys_mmap(void){
-  uint64 failure = (uint64)((char*)-1);
+  uint64 failure = (uint64)((char*)-1);   // 失败返回值0xffffffffffffffff
   struct proc* p = myproc();
   uint64 addr;
   int length, prot, flags, fd, offset;
   struct file* f;
 
+  // 从用户空间安全地解析系统调用参数，检查是否有效。参数解析失败，直接返回错误。
   if(argaddr(0, &addr) < 0 || argint(1, &length) < 0 ||argint(2, &prot) < 0
     || argint(3, &flags) < 0 ||argfd(4, &fd, &f) < 0 ||argint(5, &offset) < 0)
     return failure;
   
-    length = PGROUNDUP(length);
-    if(MAXVA - length < p->sz)
+    length = PGROUNDUP(length); // 长度值向上舍入到最近的页面边界
+    if(MAXVA - length < p->sz)  // 防止映射超出进程的地址空间限制
       return failure;
-    if(!f->readable && (prot & PROT_READ))
+    if(!f->readable && (prot & PROT_READ))  // 如果文件不可读且用户请求读权限，则返回failure
       return failure;
-    if(!f->writable && (prot & PROT_WRITE) && (flags == MAP_SHARED))
+    if(!f->writable && (prot & PROT_WRITE) && (flags == MAP_SHARED))  // 如果文件不可写、请求写权限且共享映射
       return failure;
 
-    for (int i = 0; i < NVMA; i++)
+    for (int i = 0; i < NVMA; i++)  // 循环遍历当前进程的VMA数组
     {
       struct vma* vma = &p->vmas[i];
-      if(vma->valid == 0){
-        vma->valid = 1;
-        vma->addr = p->sz;
-        p->sz += length;
+      if(vma->valid == 0){  // 检查当前VMA是否未使用
+        vma->valid = 1; // 标记已使用
+        vma->addr = p->sz;  // 映射起始地址为进程当前地址空间末尾
+        p->sz += length;    // 扩展进程地址空间
         vma->length = length;
         vma->prot = prot;
         vma->flags = flags;
         vma->fd = fd;
         vma->f = f;
-        filedup(f);
+        filedup(f);   // 增加文件的引用计数
         vma->offset = offset;
-        return addr;
+        return vma->addr;
       }
     }
     return failure;
@@ -532,12 +533,12 @@ sys_munmap(void){
   if(argaddr(0, &addr) < 0 || argint(1, &length) < 0)
     return -1;
   struct proc *p = myproc();
-  struct vma* vma = 0;
+  struct vma* vma = 0;  // 查找匹配的vma
   int idx = -1;
   for (int i = 0; i < NVMA; i++)
   {
     if(p->vmas[i].valid && addr >= p->vmas[i].addr && addr <= p->vmas[i].addr + p->vmas[i].length){
-      idx = i;
+      idx = i;  // 记录索引
       vma = &p->vmas[i];
       break;
     }
@@ -545,24 +546,24 @@ sys_munmap(void){
   if(idx == -1)
     return -1;
   
-  addr = PGROUNDDOWN(addr);
-  length = PGROUNDUP(length);
-  if(vma->flags & MAP_SHARED){
-    if(filewrite(vma->f, addr, length) < 0){
+  addr = PGROUNDDOWN(addr); // 地址向下对齐
+  length = PGROUNDUP(length); // 长度向上对齐
+  if(vma->flags & MAP_SHARED){  // 若VMA是共享映射，需要将修改页写回文件
+    if(filewrite(vma->f, addr, length) < 0){ 
       printf("munmap: filewrite < 0 \0");
     }
   }
-  uvmunmap(p->pagetable, addr, length/PGSIZE, 1);
+  uvmunmap(p->pagetable, addr, length/PGSIZE, 1); // 解除虚拟地址到物理页的映射，并释放物理内存
   
-  if(addr == vma->addr && length == vma->length){
-    fileclose(vma->f);
-    vma->valid = 0;
-  }else if(addr == vma->addr){
+  if(addr == vma->addr && length == vma->length){ // 解除整个VMA
+    fileclose(vma->f);  // 关闭文件
+    vma->valid = 0; // 标记vma无效
+  }else if(addr == vma->addr){  // 解除起始部分
     vma->addr += length;
     vma->length -= length;
-    vma->offset += length;
-  }else if((addr + length) == (vma->addr + vma->length)){
-    vma->length -= length;
+    vma->offset += length;  // 调整文件偏移
+  }else if((addr + length) == (vma->addr + vma->length)){ // 解除末尾部分
+    vma->length -= length;  // 减少VMA的长度
   }else{
     panic("munmap neither cover begining or end of mapped region");
   }

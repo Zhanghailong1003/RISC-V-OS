@@ -82,6 +82,7 @@ struct trapframe {
 
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+// 跟踪进程通过mmap系统调用创建的内存映射区域，记录每个区域的元数据，以便内核管理虚拟地址空间与文件之间的映射关系
 #define NVMA 16
 
 struct vma
